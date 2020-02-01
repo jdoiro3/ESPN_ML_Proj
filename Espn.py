@@ -7,38 +7,45 @@ import numpy as np
 class NoGames(Exception):
     pass
 
+class ErrorMsg:
+
+    def __init__(self, type, groups, e):
+        if type == 'group':
+            print('{0:s} is not an allowed group.\nPossible groups are: {1:s}, {2:s}, {3:s}, {4:s}, {5:s}, {6:s}, {7:s}'.format(str(e), *groups))
+        else:
+            pass
+
+
+
 
 class EspnGames:
 
     game_scoreboard_url = r"https://www.espn.com/college-football/scoreboard/_/group/{0:s}/year/{1:s}/seasontype/{2:s}/week/{3:s}?xhr=1"
     game_stats_url = r"http://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event={0:s}"
+    groups = {
+                    'FBS':'80',
+                    'ACC':'1',
+                    'American':'151',
+                    'Big 12':'4',
+                    'Big Ten':'5',
+                    'Pac-12':'9',
+                    'SEC':'8'
+             }
 
     def __init__(self, year, week, group='FBS', bowl_week=False):
 
         self._year = str(year)
         self._week = str(week)
-
         if bowl_week:
             self._season_type = '3'
         else:
             self._season_type = '2'
-            
-        if group == 'FBS':
-            self._group = '80'
-        elif group == 'ACC':
-            self._group = '1'
-        elif group == 'American':
-            self._group = '151'
-        elif group == 'Big 12':
-            self._group = '4'
-        elif group == 'Big Ten':
-            self._group = '5'
-        elif group == 'Pac-12':
-            self._group = '9'
-        elif group == 'SEC':
-            self._group = '8'
-        else:
-            raise ValueError(group)
+
+        try:
+            self._group = self.groups[group]
+        except KeyError as e:
+            ErrorMsg('group', self.groups, e)
+
 
         self.game_ids = []
         self.all_plays = None
@@ -83,7 +90,7 @@ class EspnGames:
 
     def _format_play_by_play(self):
 
-        if self.all_plays:
+        if ~self.all_plays.empty:
         
             self.all_plays['clock'] = self.all_plays['clock'].apply(lambda x: x['displayValue'] if type(x) is dict else x)
             self.all_plays['type'] = self.all_plays['type'].apply(lambda x: x['text'] if type(x) is dict else x)
@@ -104,23 +111,20 @@ class EspnGames:
         else:
             return True
 
-    def get_plays(self):
+    def load_plays(self):
 
         self._get_game_ids()
         self._load_play_by_play()
         self._format_play_by_play()
 
+    def get_game(self, teams, game_id):
+        return self.all_plays['']
+
         
 
             
-            
-    
-    
-week1 = EspnGames(2019,1)
 
-week1.get_plays()
 
-week1.all_plays
 
 
 
