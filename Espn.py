@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 from pandas.io.json import json_normalize
 import numpy as np
+from helpers import *
 
 class NoGames(Exception):
     pass
@@ -49,6 +50,7 @@ class EspnGames:
 
         self.game_ids = []
         self.all_plays = None
+
         
 
     def _get_game_ids(self):
@@ -65,25 +67,34 @@ class EspnGames:
 
         events_list = py_obj['content']['sbData']['events']
         self.game_ids = [event['id'] for event in events_list]
+        self.game_info = _get_game_info(events_list)
     
     def _load_play_by_play(self):
 
         if self.game_ids:
 
-            plays = []
+            week_plays = []
             for game in self.game_ids:
+                game_plays = []
                 py_obj = json.loads(requests.get(self.game_stats_url.format(game)).text)
                 drives_list = py_obj['drives']['previous']
                 for drive in drives_list:
                     drive_plays = pd.DataFrame(drive['plays'])
+
                     try:
                         drive_plays['Offense Team'] = drive['team']['displayName']
-                    except:
+                    except KeyError:
                         drive_plays['Offense Team'] = 'unknown'
-                    drive_plays['Game ID'] = game
-                    plays.append(drive_plays)
 
-            self.all_plays = pd.concat(plays, sort=False).reset_index(drop=True)
+                    game_plays.append(drive_plays)
+
+                all_game_plays = pd.concat(game_plays)
+                all_game_plays['Game ID'] = game
+                all_game_plays['Home Team'] = self.game_info[game]['homeTeam']
+                all_game_plays['Away Team'] = self.game_info[game]['awayTeam']
+                week_plays.append(all_game_plays)
+
+            self.all_plays = pd.concat(week_plays, sort=False).reset_index(drop=True)
 
         else:
             return True
@@ -116,9 +127,6 @@ class EspnGames:
         self._get_game_ids()
         self._load_play_by_play()
         self._format_play_by_play()
-
-    def get_game(self, teams, game_id):
-        return self.all_plays['']
 
         
 
