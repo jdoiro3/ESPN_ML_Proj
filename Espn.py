@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 from pandas.io.json import json_normalize
 import numpy as np
-from helpers import *
+from helpers import _get_game_info
 
 class NoGames(Exception):
     pass
