@@ -1,3 +1,6 @@
+import pandas as pd
+
+
 def _homeTeam(event):
     team1 = event['competitions'][0]['competitors'][0]
     team2 = event['competitions'][0]['competitors'][1]
