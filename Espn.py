@@ -2,8 +2,6 @@ import json
 import requests
 import pandas as pd
 from pandas.io.json import json_normalize
-import numpy as np
-from helpers import _get_game_info
 
 class NoGames(Exception):
     pass
@@ -62,25 +60,42 @@ class Espn:
         except KeyError(group):
             ErrorMsg('group')
 
-    def _get_game_ids(self, group, year, season_type, weeks):
-        if type(weeks) is list and len(weeks) > 1:
-            for week in weeks:
-                py_obj = json.loads(
-                    requests.get(
-                        self.game_scoreboard_url.format(
-                            group,
-                            year,
-                            season_type,
-                            week
-                        )
-                    ).text
-                )
+    def _homeTeam(self, event):
+        team1 = event['competitions'][0]['competitors'][0]
+        team2 = event['competitions'][0]['competitors'][1]
 
-                events_list = py_obj['content']['sbData']['events']
-                self.game_ids.append([event['id'] for event in events_list])
-                self.game_info.update(_get_game_info(events_list))
+        if team1['homeAway'] == 'home':
+            return team1['team']['displayName']
+        elif team2['homeAway'] == 'home':
+            return team2['team']['displayName']
         else:
-            py_obj = json.loads(
+            return 'unknown'
+
+    def _awayTeam(self, event):
+        team1 = event['competitions'][0]['competitors'][0]
+        team2 = event['competitions'][0]['competitors'][1]
+
+        if team1['homeAway'] == 'away':
+            return team1['team']['displayName']
+        elif team2['homeAway'] == 'away':
+            return team2['team']['displayName']
+        else:
+            return 'unknown'
+
+    def _get_game_info(self, events):
+        dic = {}
+        for event in events:
+            dic.update({
+                event['id']:
+                    {
+                        'homeTeam': self._homeTeam(event),
+                        'awayTeam': self._awayTeam(event)
+                    }
+            })
+        return dic
+
+    def _get_game_ids(self, group, year, season_type, weeks):
+        py_obj = json.loads(
                                 requests.get(
                                                 self.game_scoreboard_url.format(
                                                                                     group,
@@ -91,9 +106,9 @@ class Espn:
                                             ).text
                             )
 
-            events_list = py_obj['content']['sbData']['events']
-            self.game_ids = [event['id'] for event in events_list]
-            self.game_info = _get_game_info(events_list)
+        events_list = py_obj['content']['sbData']['events']
+        self.game_ids = self.game_ids+[event['id'] for event in events_list]
+        self.game_info.update(self._get_game_info(events_list))
 
     def _get_drive_plays(self, drive):
         drive_plays = pd.DataFrame(drive['plays'])
@@ -106,36 +121,36 @@ class Espn:
 
     def _get_game_plays(self, game):
         py_obj = json.loads(requests.get(self.game_stats_url.format(game)).text)
-        drives_list = py_obj['drives']['previous']
-        game_all_plays = pd.concat(list(map(self._get_drive_plays, drives_list)), sort=False)
-        return game_all_plays
+        try:
+            drives_list = py_obj['drives']['previous']
+            game_all_plays = pd.concat(list(map(self._get_drive_plays, drives_list)), sort=False)
+            game_all_plays['homeTeam'] = self.game_info[game]['homeTeam']
+            game_all_plays['awayTeam'] = self.game_info[game]['awayTeam']
+            return game_all_plays
+        except KeyError:
+            print('game info not found for {}.'.format(game))
 
-    def _get_week_plays(self, game_ids):
+    def _get_plays(self, game_ids):
         plays = list(map(self._get_game_plays, game_ids))
         return pd.concat(plays, sort=False)
 
     def _format_plays(self):
 
-        if not self.all_plays.empty:
+        self.all_plays['clock'] = self.all_plays['clock'].apply(lambda x: x['displayValue'] if type(x) is dict else x)
+        self.all_plays['type'] = self.all_plays['type'].apply(lambda x: x['text'] if type(x) is dict else x)
+        self.all_plays['period'] = self.all_plays['period'].apply(lambda x: x['number'] if type(x) is dict else x)
+        self.all_plays['scoringType'] = self.all_plays['scoringType'].apply(lambda x: x['name'] if type(x) is dict else x)
 
-            self.all_plays['clock'] = self.all_plays['clock'].apply(lambda x: x['displayValue'] if type(x) is dict else x)
-            self.all_plays['type'] = self.all_plays['type'].apply(lambda x: x['text'] if type(x) is dict else x)
-            self.all_plays['period'] = self.all_plays['period'].apply(lambda x: x['number'] if type(x) is dict else x)
-            self.all_plays['scoringType'] = self.all_plays['scoringType'].apply(lambda x: x['name'] if type(x) is dict else x)
+        temp_df = json_normalize(self.all_plays['start'])
+        temp_df.columns = [col + '_start' for col in temp_df.columns]
+        self.all_plays = pd.concat([self.all_plays.drop('start', axis=1).reset_index(drop=True), temp_df], axis=1, sort=False)
 
-            temp_df = json_normalize(self.all_plays['start'])
-            temp_df.columns = [col + '_start' for col in temp_df.columns]
-            self.all_plays = pd.concat([self.all_plays.drop('start', axis=1).reset_index(drop=True), temp_df], axis=1, sort=False)
+        temp_df = json_normalize(self.all_plays['end'])
+        temp_df.columns = [col + '_end' for col in temp_df.columns]
 
-            temp_df = json_normalize(self.all_plays['end'])
-            temp_df.columns = [col + '_end' for col in temp_df.columns]
+        self.all_plays = pd.concat([self.all_plays.drop('end', axis=1).reset_index(drop=True), temp_df], axis=1, sort=False)
 
-            self.all_plays = pd.concat([self.all_plays.drop('end', axis=1).reset_index(drop=True), temp_df], axis=1, sort=False)
-
-            del temp_df
-
-        else:
-            return True
+        del temp_df
 
 
 
@@ -163,7 +178,7 @@ class PlayByPlay(Espn):
 
         self.options.update(kwargs)
 
-        if not self.options['year'] and self.options['years']:
+        if not (self.options['year'] or self.options['years']):
             raise ValueError("Either a year or years parameter must be passed")
         if self.options['year'] and self.options['years']:
             raise ValueError("A year and years parameter can not be passed together.")
@@ -197,80 +212,42 @@ class PlayByPlay(Espn):
     def load_plays(self):
         # multiple years were passed  and we assume they want to load all weeks for the years
         if self.options['years']:
-            season_plays = []
             for year in self._years:
                 for week in self.weeks_default:
                     self._get_game_ids(self._group, year, self._season_type, week)
-                    self.all_plays = self._get_week_plays(self.game_ids)
-                    is_empty = self._format_plays()
-                    if is_empty:
-                        print("Sorry, but an unknown error has occurred with loading plays for the week {} of the {} season.".format(week, year))
-                    else:
-                        week_plays = self.all_plays
-                        season_plays.append(week_plays)
 
-                # get the bowl game plays
-                self._get_game_ids(self._group, year, season_type='3', weeks='1')
-                self.all_plays = self._get_week_plays(self.game_ids)
-                is_empty = self._format_plays()
-                if is_empty:
-                    print("Sorry, but an unknown error has occurred with loading bowl game plays for the the {} season.".format(year))
-                else:
-                    bowl_plays = self.all_plays
-                    season_plays.append(bowl_plays)
-
-            self.all_plays = pd.concat(season_plays, sort=False)
+            # get the bowl game plays
+            self._get_game_ids(self._group, year, season_type='3', weeks='1')
+            print(self.game_ids)
+            self.all_plays = self._get_plays(self.game_ids)
+            self._format_plays()
 
         # only a year was passed so we assume they want all plays for the year
         elif self.options['year'] and not self.options['week'] and not self.options['weeks']:
-            season_plays = []
             for week in self.weeks_default:
                 self._get_game_ids(self._group, self._year, self._season_type, week)
-                self.all_plays = self._get_week_plays(self.game_ids)
-                is_empty = self._format_plays()
-                if is_empty:
-                    print("Sorry, but an unknown error has occurred with loading plays for the week {} of the {} season.".format(week, self._year))
-                else:
-                    week_plays = self.all_plays
-                    season_plays.append(week_plays)
+
+            self.all_plays = self._get_plays(self.game_ids)
 
             # get the bowl game plays
             self._get_game_ids(self._group, self._year, season_type='3', weeks='1')
-            self.all_plays = self._get_week_plays(self.game_ids)
-            is_empty = self._format_plays()
-            if is_empty:
-                print(
-                    "Sorry, but an unknown error has occurred with loading bowl game plays for the the {} season.".format(self._year))
-            else:
-                bowl_plays = self.all_plays
-                season_plays.append(bowl_plays)
-
-            self.all_plays = pd.concat(season_plays, sort=False)
+            print(self.game_ids)
+            self.all_plays = self._get_plays(self.game_ids)
+            self._format_plays()
 
         # a year was passed with specific weeks
         elif self.options['year'] and (self.options['weeks'] or self.options['week']):
-            season_plays = []
+
             for week in self._weeks:
+                print(week)
                 self._get_game_ids(self._group, self._year, self._season_type, week)
-                self.all_plays = self._get_week_plays(self.game_ids)
-                is_empty = self._format_plays()
-                if is_empty:
-                    print("Sorry, but an unknown error has occured with loading plays.")
-                else:
-                    week_plays = self.all_plays
-                    season_plays.append(week_plays)
+            if self.bowl_week:
+                # get the bowl game plays
+                print("getting bowl game ids...")
+                self._get_game_ids(self._group, self._year, season_type='3', weeks='1')
 
-            # get the bowl game plays
-            self._get_game_ids(self._group, self._year, season_type='3', weeks='1')
-            self.all_plays.append(self._get_week_plays(self.game_ids))
-            is_empty = self._format_plays()
-            if is_empty:
-                print(
-                    "Sorry, but an unknown error has occurred with loading bowl game plays for the the {} season.".format(self._year))
-            else:
-                bowl_plays = self.all_plays
-                season_plays.append(bowl_plays)
-
+                self.all_plays = self._get_plays(self.game_ids)
+                self._format_plays()
 
         
 
