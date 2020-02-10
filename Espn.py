@@ -227,8 +227,6 @@ class PlayByPlay(Espn):
             for week in self.weeks_default:
                 self._get_game_ids(self._group, self._year, self._season_type, week)
 
-            self.all_plays = self._get_plays(self.game_ids)
-
             # get the bowl game plays
             self._get_game_ids(self._group, self._year, season_type='3', weeks='1')
             print(self.game_ids)
