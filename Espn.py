@@ -2,6 +2,11 @@ import json
 import requests
 import pandas as pd
 from pandas.io.json import json_normalize
+import asyncio
+import concurrent.futures
+import itertools
+import nest_asyncio
+nest_asyncio.apply()
 
 class NoGames(Exception):
     pass
@@ -94,21 +99,46 @@ class Espn:
             })
         return dic
 
-    def _get_game_ids(self, group, year, season_type, weeks):
-        py_obj = json.loads(
-                                requests.get(
-                                                self.game_scoreboard_url.format(
-                                                                                    group,
-                                                                                    year,
-                                                                                    season_type,
-                                                                                    weeks
-                                                                                )
-                                            ).text
-                            )
+    def _get_url_params(self, years, weeks=None):
+        if type(years) is not list:
+            raise ValueError("years must be list")
 
-        events_list = py_obj['content']['sbData']['events']
-        self.game_ids = self.game_ids+[event['id'] for event in events_list]
-        self.game_info.update(self._get_game_info(events_list))
+        if weeks:
+            if type(weeks) is not list:
+                raise ValueError("weeks must be list")
+            params = []
+            for year in years:
+                for week in weeks:
+                    params.append((year, week, '2'))
+            return params
+        else:
+            params = [[(year, str(i + 1), '2') for i in range(14)] for year in years]
+            bowl_params = [(year, '1', '3') for year in years]
+            params.append(bowl_params)
+            return list(itertools.chain.from_iterable(params))
+
+    async def _main(self, group, years, season_type, weeks):
+
+        url_params = self._get_url_params(years, weeks)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(weeks)) as executor:
+            loop = asyncio.get_event_loop()
+            futures = [
+                loop.run_in_executor(
+                    executor,
+                    requests.get,
+                    self.game_scoreboard_url.format(group, params[0], params[2], params[1])
+                ) for params in url_params
+            ]
+            for response in await asyncio.gather(*futures):
+                py_obj = json.loads(response.text)
+                events_list = py_obj['content']['sbData']['events']
+                self.game_ids = self.game_ids+[event['id'] for event in events_list]
+                self.game_info.update(self._get_game_info(events_list))
+
+    def _get_game_ids(self, group, year, season_type, weeks):
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self._main(group, year, season_type, weeks))
 
     def _get_drive_plays(self, drive):
         drive_plays = pd.DataFrame(drive['plays'])
@@ -151,6 +181,8 @@ class Espn:
         self.all_plays = pd.concat([self.all_plays.drop('end', axis=1).reset_index(drop=True), temp_df], axis=1, sort=False)
 
         del temp_df
+
+
 
 
 
@@ -225,9 +257,9 @@ class PlayByPlay(Espn):
 
                 # get the bowl game plays
                 print("getting bowl game ids...")
-            self._get_game_ids(self._group, year, season_type='3', weeks='1')
-            self.all_plays = self._get_plays(self.game_ids)
-            self._format_plays()
+                self._get_game_ids(self._group, year, season_type='3', weeks='1')
+                self.all_plays = self._get_plays(self.game_ids)
+                self._format_plays()
 
         # only a year was passed so we assume they want all plays for the year
         elif self.options['year'] and not self.options['week'] and not self.options['weeks']:
