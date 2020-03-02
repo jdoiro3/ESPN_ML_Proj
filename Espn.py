@@ -101,7 +101,7 @@ class Espn:
                                                                                     group,
                                                                                     year,
                                                                                     season_type,
-                                                                                    str(weeks)
+                                                                                    weeks
                                                                                 )
                                             ).text
                             )
@@ -169,7 +169,7 @@ class PlayByPlay(Espn):
 
     def __init__(self, group='FBS', bowl_week=False, **kwargs):
 
-        self.options = options = {
+        self.options = {
             'week':False,
             'weeks':False,
             'year':False,
@@ -185,14 +185,21 @@ class PlayByPlay(Espn):
         if self.options['week'] and self.options['weeks']:
             raise ValueError("A week and weeks parameter can not be passed together.")
 
+        if type(self.options['year']) is (list or tuple):
+            raise TypeError("year must be of type int or str.")
+        if type(self.options['week']) is (list or tuple):
+            raise TypeError("week must be of type int or str.")
+
         if self.options['year']:
             self._year = str(self.options['year'])
         if self.options['week']:
-            self._weeks = list(str(self.options['week']))
+            self._weeks = str(self.options['week'])
         if self.options['years']:
-            self._years = list(self.options['years'])
+            self._years = [str(yr) for yr in self.options['years']]
         if self.options['weeks']:
-            self._weeks = list(self.options['weeks'])
+            self._weeks = [str(wk) for wk in self.options['weeks']]
+
+        self.bowl_week = bowl_week
 
         if bowl_week:
             self._season_type = '3'
@@ -216,9 +223,9 @@ class PlayByPlay(Espn):
                 for week in self.weeks_default:
                     self._get_game_ids(self._group, year, self._season_type, week)
 
-            # get the bowl game plays
+                # get the bowl game plays
+                print("getting bowl game ids...")
             self._get_game_ids(self._group, year, season_type='3', weeks='1')
-            print(self.game_ids)
             self.all_plays = self._get_plays(self.game_ids)
             self._format_plays()
 
@@ -228,8 +235,8 @@ class PlayByPlay(Espn):
                 self._get_game_ids(self._group, self._year, self._season_type, week)
 
             # get the bowl game plays
+            print("getting bowl game ids...")
             self._get_game_ids(self._group, self._year, season_type='3', weeks='1')
-            print(self.game_ids)
             self.all_plays = self._get_plays(self.game_ids)
             self._format_plays()
 
@@ -237,15 +244,15 @@ class PlayByPlay(Espn):
         elif self.options['year'] and (self.options['weeks'] or self.options['week']):
 
             for week in self._weeks:
-                print(week)
                 self._get_game_ids(self._group, self._year, self._season_type, week)
+
             if self.bowl_week:
                 # get the bowl game plays
                 print("getting bowl game ids...")
                 self._get_game_ids(self._group, self._year, season_type='3', weeks='1')
 
-                self.all_plays = self._get_plays(self.game_ids)
-                self._format_plays()
+            self.all_plays = self._get_plays(self.game_ids)
+            self._format_plays()
 
         
 
