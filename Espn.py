@@ -8,17 +8,6 @@ import itertools
 import nest_asyncio
 nest_asyncio.apply()
 
-class NoGames(Exception):
-    pass
-
-class ErrorMsg:
-
-    def __init__(self, type, groups, e):
-        if type == 'group':
-            print('{0:s} is not an allowed group.\nPossible groups are: {1:s}, {2:s}, {3:s}, {4:s}, {5:s}, {6:s}, {7:s}'.format(str(e), *groups))
-        elif type == 'noArg':
-            print("{} ")
-
 
 class Espn:
     """
@@ -63,7 +52,7 @@ class Espn:
         try:
             return self.groups[group]
         except KeyError(group):
-            ErrorMsg('group')
+            print('Possible groups are: {1:s}, {2:s}, {3:s}, {4:s}, {5:s}, {6:s}, {7:s}'.format(*groups))
 
     def _homeTeam(self, event):
         team1 = event['competitions'][0]['competitors'][0]
