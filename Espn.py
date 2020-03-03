@@ -227,19 +227,16 @@ class PlayByPlay(EspnDataCollector):
         print("PlaybyPlay instance for week(s) {} and year(s) {}.".format(self._weeks, self._years))
 
     def load_plays(self):
-        collector = EspnDataCollector()
-        collector.get_game_ids_and_info(
+        self.get_game_ids_and_info(
                                         self._group, 
                                         self._years, 
                                         self._weeks
                                         )
 
-        collector.get_plays()
-        collector.format_plays()
+        self.get_plays()
+        self.format_plays()
         
-        print("Number of plays: {}".format(collector.plays.shape[0]))
-        
-        self.plays = collector.plays
+        print("Number of plays: {}".format(self.plays.shape[0]))
         
 
             
