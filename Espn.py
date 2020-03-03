@@ -76,7 +76,7 @@ class EspnDataCollector:
             })
         return dic
     
-    def _get_url_params(self, years, weeks):
+    def _get_url_params(self, years, weeks=False):
         if not isinstance(years,list):
             raise ValueError("years must be list")
 
