@@ -1,4 +1,5 @@
 import pandas as pd
+import datetime as dt
 import requests
 import json
 from pandas.io.json import json_normalize
@@ -6,11 +7,15 @@ import asyncio
 import concurrent.futures
 import itertools
 from IPython.display import clear_output
+# nest the event_loop to allow asyncio to be run in a jupyter notebook
 import nest_asyncio
 nest_asyncio.apply()
 
 
 class EspnDataCollector:
+    '''
+
+    '''
     
     weeks_default = ['1','2','3','4','5','6','7','8','9','10','11','12','13','14']
     game_scoreboard_url = r"https://www.espn.com/college-football/scoreboard/_/group/{0:s}/year/{1:s}/seasontype/{2:s}/week/{3:s}?xhr=1"
@@ -35,7 +40,7 @@ class EspnDataCollector:
         try:
             return self.groups[group]
         except KeyError(group):
-            print('Possible groups are: {1:s}, {2:s}, {3:s}, {4:s}, {5:s}, {6:s}, {7:s}'.format(*groups))
+            print('Possible groups are: {0:s}, {1:s}, {2:s}, {3:s}, {4:s}, {5:s}, {6:s}'.format(*self.groups.keys()))
 
     def _homeTeam(self, event):
         team1 = event['competitions'][0]['competitors'][0]
@@ -71,12 +76,12 @@ class EspnDataCollector:
             })
         return dic
     
-    def _get_url_params(self, years, weeks=None):
+    def _get_url_params(self, years, weeks):
         if not isinstance(years,list):
             raise ValueError("years must be list")
 
         if weeks:
-            if type(weeks) is not list:
+            if not isinstance(weeks,list):
                 raise ValueError("weeks must be list")
             params = []
             for year in years:
@@ -101,8 +106,10 @@ class EspnDataCollector:
         
     
     async def _get_game_ids_and_info(self, group, years, weeks, url):
-
-        url_params = self._get_url_params(years, weeks)
+        if weeks:
+            url_params = self._get_url_params(years, weeks)
+        else:
+            url_params = self._get_url_params(years)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
             loop = asyncio.get_event_loop()
@@ -218,15 +225,13 @@ class PlayByPlay(EspnDataCollector):
         else:
             self._weeks = self.weeks_default
 
-        try:
-            self._group = self.groups[group]
-        except KeyError as e:
-            print("{} is not a group".format(e))
+        self._group = self._get_group(group)
 
     def __str__(self):
         print("PlaybyPlay instance for week(s) {} and year(s) {}.".format(self._weeks, self._years))
 
     def load_plays(self):
+        start = dt.datetime.now()
         self.get_game_ids_and_info(
                                         self._group, 
                                         self._years, 
@@ -235,8 +240,9 @@ class PlayByPlay(EspnDataCollector):
 
         self.get_plays()
         self.format_plays()
-        
+        end = dt.datetime.now()
         print("Number of plays: {}".format(self.plays.shape[0]))
+        print("Time elapsed: {}".format(end-start))
         
 
             
